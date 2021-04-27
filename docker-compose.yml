@@ -1,0 +1,87 @@
+version: '3'
+
+services:
+    web:
+        # image: nginx:alpine
+        build:
+            context: nginx
+        image: trihost_nginx:1.0
+        restart: always
+        ports:
+            - "80:8080"
+            - "443:1443"
+        volumes:
+            - web-root:/usr/share/nginx/html
+            - "${CONFIG_DIR}/nginx/nginx.conf:/etc/nginx/nginx.conf"
+            - "${CONFIG_DIR}/nginx/sites-enabled:/etc/nginx/sites-enabled"
+            - "${CONFIG_DIR}/nginx/conf.d:/etc/nginx/conf.d"
+            - certbot-etc:/etc/letsencrypt
+            - certbot-var:/var/lib/letsencrypt
+            - "php-socket:/sock"
+        depends_on:
+            - php-fpm
+
+    php-fpm:
+        build:
+            context: php-fpm
+        image: trihost_php-fpm:1.0
+        restart: always
+        # container_name: app
+        volumes:
+            - web-root:/usr/share/nginx/html
+            - "${CONFIG_DIR}/php-fpm/zz-docker.conf:/usr/local/etc/php-fpm.d/zz-docker.conf"
+            - "${CONFIG_DIR}/php-fpm/${PHP_INI_FILE}:${PHP_INI_DIR}/php.ini"
+            - "${CONFIG_DIR}/php-fpm/10-opcache.ini:${PHP_INI_DIR}/conf.d/opcache.ini"
+            - "php-socket:/sock"
+        networks: 
+            - backend_network
+        depends_on:
+            - db
+        links: 
+            - db
+
+    db:
+        build:
+            context: mysql
+        image: trihost_mysql:1.0
+        restart: always
+        environment:
+            MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASS}
+            MYSQL_DATABASE: ${DB_NAME}
+            MYSQL_USER: ${MYSQL_USER}
+            MYSQL_PASSWORD: ${USER_PASSWORD}
+        volumes:
+            - "lessons_db:/var/lib/mysql"
+            - $HOME/projects/docker/tennom.net/web/data/migrate.sql:/migrate.sql
+        networks: 
+            - backend_network
+
+    # certbot:
+    #     image: certbot/certbot
+    #     container_name: certbot
+    #     volumes:
+    #         - certbot-etc:/etc/letsencrypt
+    #         - certbot-var:/var/lib/letsencrypt
+    #         - web-root:/var/www/html
+    #     depends_on:
+    #         - web
+    #     command: >- 
+    #         certonly --webroot --webroot-path=/var/www/html --email tennom@outlook.com 
+    #         --agree-tos --no-eff-email --force-renewal -d tennom.net  -d www.tennom.net
+    #         --uir --hsts --staple-ocsp --must-staple 
+    
+volumes:
+    php-socket:
+    lessons_db:
+    certbot-etc:
+    certbot-var:
+    web-root:
+        driver: local
+        driver_opts:
+            type: none
+            device: ${WEB_ROOT_DIR}
+            o: bind
+
+networks:
+    backend_network:
+        driver: bridge
